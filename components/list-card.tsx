@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { ScrollArea } from "./ui/scroll-area";
 import { TaskCard } from "./task-card";
 import { Droppable, Draggable } from "@hello-pangea/dnd";
+import { format, isPast } from "date-fns";
 
 interface ListCardProps {
   list: List;
@@ -25,6 +26,40 @@ export function ListCard({
   onDeleteTask,
   onToggleTask,
 }: ListCardProps) {
+  // Sort tasks function
+  const sortTasks = (tasks: Task[]) => {
+    return [...tasks].sort((a, b) => {
+      // First, sort by completion status
+      if (a.completed !== b.completed) {
+        return a.completed ? 1 : -1;
+      }
+
+      // Then by importance (high to low)
+      if (a.importance !== b.importance) {
+        return b.importance - a.importance;
+      }
+
+      // Then by deadline
+      const aDate = a.deadline ? new Date(a.deadline) : null;
+      const bDate = b.deadline ? new Date(b.deadline) : null;
+
+      if (aDate && bDate) {
+        return aDate.getTime() - bDate.getTime();
+      } else if (aDate) {
+        return -1; // Tasks with deadlines come first
+      } else if (bDate) {
+        return 1;
+      }
+
+      // Finally by creation date
+      const aCreated = new Date(a.createdAt);
+      const bCreated = new Date(b.createdAt);
+      return aCreated.getTime() - bCreated.getTime();
+    });
+  };
+
+  const sortedTasks = sortTasks(list.tasks);
+
   return (
     <Card className="w-80 shrink-0">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -54,7 +89,7 @@ export function ListCard({
                 ref={provided.innerRef}
                 className="p-4 space-y-4"
               >
-                {list.tasks.map((task, index) => (
+                {sortedTasks.map((task, index) => (
                   <Draggable key={task.id} draggableId={task.id} index={index}>
                     {(provided) => (
                       <div

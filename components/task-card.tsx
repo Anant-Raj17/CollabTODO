@@ -1,11 +1,12 @@
 import { Task, importanceColors, importanceLabels } from "@/types";
-import { format } from "date-fns";
+import { format, isPast } from "date-fns";
 import { Edit, MoreVertical, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { Checkbox } from "./ui/checkbox";
 import { Badge } from "./ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { cn } from "@/lib/utils";
 
 interface TaskCardProps {
   task: Task;
@@ -22,8 +23,16 @@ export function TaskCard({
   onDelete,
   onToggleComplete,
 }: TaskCardProps) {
+  const isOverdue =
+    task.deadline && !task.completed && isPast(new Date(task.deadline));
+
   return (
-    <Card className={`${task.completed ? "opacity-50" : ""}`}>
+    <Card
+      className={cn(
+        task.completed ? "opacity-50" : "",
+        isOverdue ? "border-red-500" : "",
+      )}
+    >
       <CardContent className="p-2">
         <div className="flex justify-between items-center">
           <div className="flex items-center space-x-2">
@@ -32,9 +41,14 @@ export function TaskCard({
               onCheckedChange={onToggleComplete}
               disabled={!canEdit}
             />
-            <span className={task.completed ? "line-through" : ""}>
-              {task.content}
-            </span>
+            <div>
+              <span className={task.completed ? "line-through" : ""}>
+                {task.content}
+              </span>
+              {isOverdue && (
+                <span className="text-xs text-red-500 ml-2">Overdue</span>
+              )}
+            </div>
           </div>
           {canEdit && (
             <Popover>
@@ -64,14 +78,24 @@ export function TaskCard({
         </div>
         <div className="flex justify-between items-center mt-2">
           {task.deadline && (
-            <div className="text-xs text-muted-foreground">
-              Due: {format(task.deadline, "PP")}
+            <div
+              className={cn(
+                "text-xs",
+                isOverdue ? "text-red-500" : "text-muted-foreground",
+              )}
+            >
+              Due: {format(new Date(task.deadline), "PP")}
             </div>
           )}
           <Badge className={importanceColors[task.importance]}>
             {importanceLabels[task.importance]}
           </Badge>
         </div>
+        {task.description && (
+          <div className="text-xs text-muted-foreground mt-2">
+            {task.description}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

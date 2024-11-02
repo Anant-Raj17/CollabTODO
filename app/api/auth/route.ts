@@ -1,36 +1,84 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { hash, compare } from "bcrypt";
+import { firestore } from "@/lib/firebase";
+import { collection, query, where, getDocs, addDoc } from "firebase/firestore";
 
 export async function POST(request: Request) {
   const body = await request.json();
   const { username, password, action } = body;
 
   if (action === "signup") {
-    const hashedPassword = await hash(password, 10);
-    const user = await prisma.user.create({
-      data: {
+    try {
+      const hashedPassword = await hash(password, 10);
+
+      // Check if user exists
+      const usersRef = collection(firestore, "users");
+      const q = query(usersRef, where("username", "==", username));
+      const querySnapshot = await getDocs(q);
+
+      if (!querySnapshot.empty) {
+        return NextResponse.json(
+          { error: "Username already exists" },
+          { status: 400 },
+        );
+      }
+
+      // Create new user
+      const userRef = await addDoc(collection(firestore, "users"), {
         username,
         password: hashedPassword,
-      },
-    });
-    return NextResponse.json({ id: user.id, username: user.username });
+      });
+
+      // Create initial list for the user
+      await addDoc(collection(firestore, "lists"), {
+        title: username,
+        userId: userRef.id,
+        points: 0,
+      });
+
+      return NextResponse.json({
+        id: userRef.id,
+        username,
+      });
+    } catch (error) {
+      console.error("Signup error:", error);
+      return NextResponse.json(
+        { error: "Error creating user" },
+        { status: 500 },
+      );
+    }
   }
 
   if (action === "login") {
-    const user = await prisma.user.findUnique({
-      where: { username },
-    });
+    try {
+      const usersRef = collection(firestore, "users");
+      const q = query(usersRef, where("username", "==", username));
+      const querySnapshot = await getDocs(q);
 
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      if (querySnapshot.empty) {
+        return NextResponse.json({ error: "User not found" }, { status: 404 });
+      }
+
+      const userDoc = querySnapshot.docs[0];
+      const userData = userDoc.data();
+
+      const passwordMatch = await compare(password, userData.password);
+      if (!passwordMatch) {
+        return NextResponse.json(
+          { error: "Invalid password" },
+          { status: 401 },
+        );
+      }
+
+      return NextResponse.json({
+        id: userDoc.id,
+        username: userData.username,
+      });
+    } catch (error) {
+      console.error("Login error:", error);
+      return NextResponse.json({ error: "Error logging in" }, { status: 500 });
     }
-
-    const passwordMatch = await compare(password, user.password);
-    if (!passwordMatch) {
-      return NextResponse.json({ error: "Invalid password" }, { status: 401 });
-    }
-
-    return NextResponse.json({ id: user.id, username: user.username });
   }
+
+  return NextResponse.json({ error: "Invalid action" }, { status: 400 });
 }

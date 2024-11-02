@@ -1,40 +1,24 @@
 "use client";
-import {
-  useState,
-  //useEffect
-} from "react";
+import { useState } from "react";
 import { DragDropContext, DropResult } from "@hello-pangea/dnd";
 import { useAuth } from "@/contexts/auth-context";
-import {
-  //List,
-  Task,
-  TaskInput,
-  View,
-} from "@/types";
+import { Task, TaskInput, View } from "@/types";
 import { useLists } from "@/hooks/use-lists";
-import { ListCard } from "./list-card";
 import { TaskDialog } from "./task-dialog";
 import { LeaderboardView } from "./leaderboard-view";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Dialog, DialogTrigger } from "./ui/dialog";
-import { Plus } from "lucide-react";
-import { ScrollArea } from "./ui/scroll-area";
+import { AuthDialog } from "./auth-dialog";
+import { Sidebar } from "./sidebar";
+import { MyListsView } from "./my-lists-view";
+import { CollaborativeView } from "./collaborative-view";
 
 export function KanbanBoardComponent() {
-  const {
-    lists,
-    //loading,
-    //addList,
-    fetchLists,
-  } = useLists();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isAddListDialogOpen, setIsAddListDialogOpen] = useState(false);
+  const { lists, fetchLists } = useLists();
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const [currentList, setCurrentList] = useState<string | null>(null);
   const [currentTask, setCurrentTask] = useState<Task | null>(null);
-  const [currentView] = useState<View>("collaborative");
-  const [, setIsAuthDialogOpen] = useState(false);
+  const [currentView, setCurrentView] = useState<View>("myTasks");
+  const [isAuthDialogOpen, setIsAuthDialogOpen] = useState(false);
   const { user } = useAuth();
 
   const [taskInput, setTaskInput] = useState<TaskInput>({
@@ -46,6 +30,27 @@ export function KanbanBoardComponent() {
 
   const handleTaskInputChange = (input: TaskInput) => {
     setTaskInput(input);
+  };
+
+  const handleTaskAction = (listId: string, task: Task | null) => {
+    setCurrentList(listId);
+    setCurrentTask(task);
+    if (task) {
+      setTaskInput({
+        content: task.content,
+        deadline: task.deadline,
+        description: task.description || "",
+        importance: task.importance,
+      });
+    } else {
+      setTaskInput({
+        content: "",
+        deadline: undefined,
+        description: "",
+        importance: 1,
+      });
+    }
+    setIsTaskDialogOpen(true);
   };
 
   const onDragEnd = async (result: DropResult) => {
@@ -75,7 +80,7 @@ export function KanbanBoardComponent() {
       await fetch("/api/tasks", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId }),
+        body: JSON.stringify({ taskId, listId }),
       });
       fetchLists();
     } catch (error) {
@@ -90,14 +95,26 @@ export function KanbanBoardComponent() {
         ?.tasks.find((t) => t.id === taskId);
 
       if (task) {
-        await fetch("/api/tasks", {
+        const response = await fetch("/api/tasks", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             id: taskId,
+            listId: listId,
             completed: !task.completed,
+            content: task.content,
+            description: task.description,
+            deadline: task.deadline,
+            importance: task.importance,
+            userId: task.userId,
           }),
         });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message);
+        }
+
         fetchLists();
       }
     } catch (error) {
@@ -114,74 +131,45 @@ export function KanbanBoardComponent() {
           </Button>
         </div>
       ) : (
-        <DragDropContext onDragEnd={onDragEnd}>
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <Input
-                type="text"
-                placeholder="Search lists..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="max-w-xs"
-              />
-              <Dialog
-                open={isAddListDialogOpen}
-                onOpenChange={setIsAddListDialogOpen}
-              >
-                <DialogTrigger asChild>
-                  <Button>
-                    <Plus className="mr-2 h-4 w-4" /> Add List
-                  </Button>
-                </DialogTrigger>
-              </Dialog>
-            </div>
+        <>
+          <Sidebar currentView={currentView} onViewChange={setCurrentView} />
+          <DragDropContext onDragEnd={onDragEnd}>
+            <div className="flex flex-col gap-4">
+              {currentView === "myTasks" && (
+                <MyListsView
+                  lists={lists}
+                  onDeleteTask={handleDeleteTask}
+                  onToggleTask={handleToggleTask}
+                  onAddTask={(listId) => handleTaskAction(listId, null)}
+                  onEditTask={(listId, task) => handleTaskAction(listId, task)}
+                />
+              )}
 
-            <ScrollArea className="h-[calc(100vh-8rem)]">
               {currentView === "collaborative" && (
-                <div className="flex gap-4">
-                  {lists.map((list) => (
-                    <ListCard
-                      key={list.id}
-                      list={list}
-                      canEdit={user.id === list.userId}
-                      onAddTask={() => {
-                        setCurrentList(list.id);
-                        setCurrentTask(null);
-                        setIsTaskDialogOpen(true);
-                      }}
-                      onEditTask={(task) => {
-                        setCurrentList(list.id);
-                        setCurrentTask(task);
-                        setTaskInput({
-                          content: task.content,
-                          deadline: task.deadline,
-                          description: task.description || "",
-                          importance: task.importance,
-                        });
-                        setIsTaskDialogOpen(true);
-                      }}
-                      onDeleteTask={(taskId) =>
-                        handleDeleteTask(list.id, taskId)
-                      }
-                      onToggleTask={(taskId) =>
-                        handleToggleTask(list.id, taskId)
-                      }
-                    />
-                  ))}
-                </div>
+                <CollaborativeView lists={lists} />
               )}
 
               {currentView === "leaderboard" && (
                 <LeaderboardView lists={lists} />
               )}
-            </ScrollArea>
-          </div>
-        </DragDropContext>
+            </div>
+          </DragDropContext>
+        </>
       )}
 
       <TaskDialog
         isOpen={isTaskDialogOpen}
-        onClose={() => setIsTaskDialogOpen(false)}
+        onClose={() => {
+          setIsTaskDialogOpen(false);
+          setCurrentList(null);
+          setCurrentTask(null);
+          setTaskInput({
+            content: "",
+            deadline: undefined,
+            description: "",
+            importance: 1,
+          });
+        }}
         task={currentTask}
         taskInput={taskInput}
         onTaskInputChange={handleTaskInputChange}
@@ -189,7 +177,7 @@ export function KanbanBoardComponent() {
           if (!currentList || !user) return;
 
           try {
-            const endpoint = currentTask ? "/api/tasks" : "/api/tasks";
+            const endpoint = "/api/tasks";
             const method = currentTask ? "PUT" : "POST";
 
             await fetch(endpoint, {
@@ -208,10 +196,17 @@ export function KanbanBoardComponent() {
 
             fetchLists();
             setIsTaskDialogOpen(false);
+            setCurrentList(null);
+            setCurrentTask(null);
           } catch (error) {
             console.error("Error saving task:", error);
           }
         }}
+      />
+
+      <AuthDialog
+        isOpen={isAuthDialogOpen}
+        onClose={() => setIsAuthDialogOpen(false)}
       />
     </div>
   );
