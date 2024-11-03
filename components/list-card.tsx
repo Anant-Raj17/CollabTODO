@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { ScrollArea } from "./ui/scroll-area";
 import { TaskCard } from "./task-card";
 import { Droppable, Draggable } from "@hello-pangea/dnd";
-import { format, isPast } from "date-fns";
 
 interface ListCardProps {
   list: List;
